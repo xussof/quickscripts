@@ -25,6 +25,30 @@ install_apps_ubuntu() {
 
     sudo apt install -y vim htop curl wget virtualbox python3-pip openssh-server git net-tools scp
 
+    git_email=$(git config --global user.email)
+    git_name=$(git config --global user.name)
+
+    if [[ -z "$git_email" ]]; then
+        echo "No global Git email set. Setting to default: xussof@gmail.com"
+        git config --global user.email "xussof@gmail.com"
+    fi
+
+    if [[ -z "$git_name" ]]; then
+        echo "No global Git name set. Setting to default: xussof"
+        git config --global user.name "xussof"
+    fi
+
+    # Check if the alias already exists in .bashrc
+    if ! grep -q "alias gitall=" ~/.bashrc; then
+        echo "alias gitall='git add . --all && git commit -m \"Gitall\" && git push'" >> ~/.bashrc
+
+        # Source .bashrc to make the changes take effect in this script's subprocess
+        source ~/.bashrc
+        echo "Alias gitall added and .bashrc sourced."
+    else
+        echo "Alias gitall already exists in .bashrc."
+    fi
+
     # Docker and Docker Compose installation
     sudo apt install -y docker.io
     sudo systemctl start docker
