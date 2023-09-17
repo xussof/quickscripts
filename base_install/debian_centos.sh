@@ -1,53 +1,93 @@
 #!/bin/bash
 
-# Detect distribution
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-else
-    echo "No se pudo determinar tu sistema operativo."
-    exit 1
-fi
+# Function to check if a command exists
+is_installed() {
+    command -v "$1" &> /dev/null
+}
+
+# Installation functions
+
+install_git_and_config() {
+    echo "Installing and configuring Git..."
+    
+    # Git installation
+    if ! is_installed "git"; then
+        sudo apt install -y git
+    else
+        echo "Git is already installed."
+    fi
+    
+    local git_email=$(git config --global user.email)
+    local git_name=$(git config --global user.name)
+
+    # Setup git user info if not present
+    if [[ -z "$git_email" ]]; then
+        echo "Setting global Git email to default: xussof@gmail.com"
+        git config --global user.email "xussof@gmail.com"
+    fi
+
+    if [[ -z "$git_name" ]]; then
+        echo "Setting global Git name to default: xussof"
+        git config --global user.name "xussof"
+    fi
+
+    # Add gitall alias
+    if ! grep -q "alias gitall=" ~/.bashrc; then
+        echo "alias gitall='git add . --all && git commit -m \"Gitall\" && git push'" >> ~/.bashrc
+        source ~/.bashrc
+        echo "Alias gitall added and .bashrc sourced."
+    else
+        echo "Alias gitall already exists in .bashrc."
+    fi
+}
+
+install_kubectl() {
+    echo "Installing kubectl..."
+    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+    echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+    sudo apt-get update
+    sudo apt-get install -y kubectl
+}
+
+install_aws_cli() {
+    echo "Installing AWS CLI..."
+    pip3 install awscli --upgrade --user
+    local aws_path="export PATH=$PATH:~/.local/bin/"
+    if ! grep -q "$aws_path" ~/.bashrc; then
+        echo "$aws_path" >> ~/.bashrc
+        source ~/.bashrc
+    fi
+}
+
+install_azure_cli() {
+    echo "Installing Azure CLI..."
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.asc.gpg
+    sudo mv microsoft.asc.gpg /etc/apt/trusted.gpg.d/
+    echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ wheezy main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+    sudo apt-get update
+    sudo apt-get install azure-cli
+}
+
+install_helm() {
+    echo "Installing Helm..."
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 get_helm.sh
+    ./get_helm.sh
+    rm get_helm.sh
+}
 
 install_apps_ubuntu() {
-    # Update repositories
     sudo apt update
 
-    # List of applications and their verification commands
-    declare -A apps=( ["vim"]="vim" ["htop"]="htop" ["curl"]="curl" ["wget"]="wget" ["virtualbox"]="virtualbox" ["python3-pip"]="pip3" ["openssh-server"]="sshd" )
-
-    for app in "${!apps[@]}"; do
-        if ! is_installed "${apps[$app]}"; then
+    local apps=( "vim" "htop" "curl" "wget" "virtualbox" "python3-pip" "openssh-server" "net-tools" "scp" )
+    for app in "${apps[@]}"; do
+        if ! is_installed "$app"; then
             sudo apt install -y "$app"
         else
             echo "$app is already installed."
         fi
     done
 
-    sudo apt install -y vim htop curl wget virtualbox python3-pip openssh-server git net-tools scp
-
-    git_email=$(git config --global user.email)
-    git_name=$(git config --global user.name)
-
-    if [[ -z "$git_email" ]]; then
-        echo "No global Git email set. Setting to default: xussof@gmail.com"
-        git config --global user.email "xussof@gmail.com"
-    fi
-
-    if [[ -z "$git_name" ]]; then
-        echo "No global Git name set. Setting to default: xussof"
-        git config --global user.name "xussof"
-    fi
-
-    # Check if the alias already exists in .bashrc
-    if ! grep -q "alias gitall=" ~/.bashrc; then
-        echo "alias gitall='git add . --all && git commit -m \"Gitall\" && git push'" >> ~/.bashrc
-
-        # Source .bashrc to make the changes take effect in this script's subprocess
-        source ~/.bashrc
-        echo "Alias gitall added and .bashrc sourced."
-    else
-        echo "Alias gitall already exists in .bashrc."
-    fi
 
     # Docker and Docker Compose installation
     sudo apt install -y docker.io
@@ -57,110 +97,28 @@ install_apps_ubuntu() {
     sudo curl -L "https://github.com/docker/compose/releases/download/latest/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
 
-    # Ansible
-    if ! is_installed "ansible"; then
-        sudo apt-add-repository -y ppa:ansible/ansible
-        sudo apt update
-        sudo apt install -y ansible
-    else
-        echo "Ansible is already installed."
-    fi
-
-    # Visual Studio Code
-    if ! is_installed "code"; then
-        curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-        echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
-        sudo apt update
-        sudo apt install -y code
-    else
-        echo "Visual Studio Code is already installed."
-    fi
-
-    # Google Chrome
-    if ! is_installed "google-chrome"; then
-        wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-        sudo apt install -y ./google-chrome-stable_current_amd64.deb
-        rm google-chrome-stable_current_amd64.deb
-    else
-        echo "Google Chrome is already installed."
-    fi
-
-
-    # Opera
-    wget -qO- https://deb.opera.com/archive.key | sudo apt-key add -
-    echo | sudo add-apt-repository "deb [arch=i386,amd64] https://deb.opera.com/opera-stable/ stable non-free"
-
-    sudo apt update
-    echo | sudo DEBIAN_FRONTEND=noninteractive apt-get install -y opera-stable
-
-
-    # Lens (Kubernetes IDE)
-    sudo snap install kontena-lens --classic
-
-    # pgAdmin
-    curl https://www.pgadmin.org/static/packages_pgadmin_org.pub | sudo apt-key add -
-    sudo sh -c 'echo "deb https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/$(lsb_release -cs) pgadmin4 main" > /etc/apt/sources.list.d/pgadmin4.list && apt update'
-    echo | sudo DEBIAN_FRONTEND=noninteractive apt-get install -y pgadmin4-desktop
-
-    # Postman
-    sudo snap install postman
+    install_kubectl
+    install_aws_cli
+    install_azure_cli
+    install_helm
 }
 
-install_apps_centos() {
-    sudo yum install -y vim htop curl wget virtualbox python3-pip openssh-server git
-
-    # Docker y Docker Compose
-    sudo yum install -y yum-utils
-    sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-    sudo yum install -y docker-ce docker-ce-cli containerd.io
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    sudo usermod -aG docker $USER
-    sudo curl -L "https://github.com/docker/compose/releases/download/latest/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compos
-
-    # Ansible
-    if ! is_installed "ansible"; then
-        sudo yum install -y ansible
-    else
-        echo "Ansible is already installed."
+main() {
+    if [ ! -f /etc/os-release ]; then
+        echo "No se pudo determinar tu sistema operativo."
+        exit 1
     fi
 
-    # Visual Studio Code
-    if ! is_installed "code"; then
-        sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
-        sudo sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo'
-        sudo yum check-update
-        sudo yum install -y code
+    . /etc/os-release
+
+    if [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+        install_apps_ubuntu
     else
-        echo "Visual Studio Code is already installed."
+        echo "This distribution is not supported by this script."
+        exit 1
     fi
 
-    # Instalación de Google Chrome
-    sudo yum install -y https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
-
-    # Opera y Lens no están disponibles directamente a través de yum, así que se omiten en esta sección. Puedes descargarlos manualmente desde sus sitios web oficiales si es necesario.
-
-    # Installation of pgAdmin
-    sudo yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-$(rpm -E %{rhel})-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-    sudo yum install -y pgadmin4-desktop
-
-    # Installation of Postman
-    wget https://dl.pstmn.io/download/latest/linux64 -O postman.tar.gz
-    tar -xzf postman.tar.gz -C /opt
-    ln -s /opt/Postman/Postman /usr/bin/postman
-    rm postman.tar.gz
-
+    echo "Instalación completada."
 }
 
-if [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
-    install_apps_ubuntu
-elif [[ "$ID" == "centos" || "$ID" == "fedora" ]]; then
-    install_apps_centos
-else
-    echo "This distribution it's not suported by this script."
-    exit 1
-fi
-
-echo "Instalación completada."
-
+main
